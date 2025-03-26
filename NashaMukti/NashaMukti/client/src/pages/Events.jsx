@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link as RouterLink } from 'react-router-dom';
 import {
@@ -27,56 +27,42 @@ import debounce from 'lodash/debounce';
 
 const Events = () => {
   const dispatch = useDispatch();
-  const { events, loading, totalPages, currentPage, error } = useSelector(
-    (state) => state.events
-  );
+  const { events = [], loading, totalPages, error } = useSelector((state) => state.events);
   const { translate } = useLanguage();
 
   const [filters, setFilters] = useState({
     district: '',
     search: '',
   });
-  
-  const [districts, setDistricts] = useState([]);
-  const [loadingDistricts, setLoadingDistricts] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
   const [localPage, setLocalPage] = useState(1);
+
+  // Extract unique districts using useMemo to optimize performance
+  const districts = useMemo(() => {
+    return [...new Set(events.map((event) => event.district).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  }, [events]);
 
   // Debounced search function
   const debouncedSearch = useCallback(
     debounce((value) => {
-      setFilters(prev => ({ ...prev, search: value }));
-      setLocalPage(1); // Reset to first page when searching
+      setFilters((prev) => ({ ...prev, search: value }));
+      setLocalPage(1);
     }, 500),
     []
   );
 
-  // Extract unique districts from events
-  useEffect(() => {
-    if (events && events.length > 0) {
-      const uniqueDistricts = [...new Set(events.map(event => event.district))];
-      const sortedDistricts = uniqueDistricts
-        .filter(district => district) // Remove any null/undefined values
-        .sort((a, b) => a.localeCompare(b));
-      
-      setDistricts(sortedDistricts);
-    }
-  }, [events]);
-
-  // Fetch events when filters change
+  // Fetch events when filters or page changes
   useEffect(() => {
     dispatch(getEvents({ page: localPage, ...filters }));
   }, [dispatch, filters, localPage]);
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
-    setFilters(prev => ({ ...prev, [name]: value }));
-    setLocalPage(1); // Reset to first page when changing filters
+    setFilters((prev) => ({ ...prev, [name]: value }));
+    setLocalPage(1);
   };
 
   const handleSearchChange = (e) => {
     const value = e.target.value;
-    setSearchTerm(value);
     debouncedSearch(value);
   };
 
@@ -85,6 +71,7 @@ const Events = () => {
   };
 
   const formatDate = (date) => {
+    if (!date) return translate('events.unknownDate');
     return new Date(date).toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
@@ -123,7 +110,6 @@ const Events = () => {
               fullWidth
               label={translate('events.searchLabel')}
               name="search"
-              value={searchTerm}
               onChange={handleSearchChange}
               placeholder={translate('events.searchPlaceholder')}
             />
@@ -138,7 +124,6 @@ const Events = () => {
                 value={filters.district}
                 label={translate('events.districtLabel')}
                 onChange={handleFilterChange}
-                disabled={loading}
               >
                 <MenuItem value="">{translate('events.allDistricts')}</MenuItem>
                 {districts.map((district) => (
@@ -162,7 +147,7 @@ const Events = () => {
           {events.map((event) => (
             <Grid item xs={12} md={6} lg={4} key={event._id}>
               <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                {event.images && event.images[0] && (
+                {event.images?.[0]?.url && (
                   <CardMedia
                     component="img"
                     height="200"
@@ -200,12 +185,7 @@ const Events = () => {
                   >
                     {event.description}
                   </Typography>
-                  <Button
-                    component={RouterLink}
-                    to={`/events/${event._id}`}
-                    variant="contained"
-                    size="small"
-                  >
+                  <Button component={RouterLink} to={`/events/${event._id}`} variant="contained" size="small">
                     {translate('events.learnMore')}
                   </Button>
                 </CardContent>
@@ -218,16 +198,11 @@ const Events = () => {
       {/* Pagination */}
       {totalPages > 1 && (
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-          <Pagination
-            count={totalPages}
-            page={localPage}
-            onChange={handlePageChange}
-            color="primary"
-          />
+          <Pagination count={totalPages} page={localPage} onChange={handlePageChange} color="primary" />
         </Box>
       )}
     </Container>
   );
 };
 
-export default Events; 
+export default Events;
